@@ -1,0 +1,7 @@
+/target
+**/*.AVI
+**/*.avi
+**/*.gpx
+**/*.bin
+**/*.DAT
+**/VER.TXT

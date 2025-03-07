@@ -1,0 +1,13 @@
+[package]
+name = "zdr055_gpx"
+version = "0.1.0"
+edition = "2021"
+
+[build]
+target = ["x86_64-pc-windows-gnu"]
+
+[dependencies]
+byteorder = "1.4"
+regex = "1.5"
+memchr = "2.7.2"
+clap = { version = "4.0", features = ["derive"] }
