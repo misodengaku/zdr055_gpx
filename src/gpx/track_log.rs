@@ -1,6 +1,6 @@
 use super::track_point::GPXTrackPoint;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct GPXTrackLog {
     points: Vec<GPXTrackPoint>,
 }
@@ -10,12 +10,20 @@ impl GPXTrackLog {
         GPXTrackLog { points: Vec::new() }
     }
 
-    fn join(&mut self, other: GPXTrackLog) {
+    pub(crate) fn extend(&mut self, other: GPXTrackLog) {
         self.points.extend(other.points);
     }
 
     pub(crate) fn push(&mut self, point: GPXTrackPoint) {
         self.points.push(point);
+    }
+
+    pub(crate) fn first(&self) -> Option<&GPXTrackPoint> {
+        self.points.first()
+    }
+
+    pub(crate) fn last(&self) -> Option<&GPXTrackPoint> {
+        self.points.last()
     }
 
     pub(crate) fn to_str(&self) -> String {

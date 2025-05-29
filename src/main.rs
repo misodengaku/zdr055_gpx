@@ -18,7 +18,12 @@ fn get_output_path(in_file: &path::PathBuf, out_dir: &path::PathBuf) -> path::Pa
     out_dir.join(format!("{}.gpx", filename))
 }
 
-fn process_directory(dir_path: &path::PathBuf, output_dir: &path::PathBuf, parallel_num: usize) {
+fn process_directory(
+    dir_path: &path::PathBuf,
+    output_dir: &path::PathBuf,
+    parallel_num: usize,
+    merge_threshold: humantime::Duration,
+) {
     let dir_entries = fs::read_dir(dir_path);
     if dir_entries.is_err() {
         eprintln!("Error reading directory: {}", dir_path.display());
@@ -47,11 +52,14 @@ fn process_directory(dir_path: &path::PathBuf, output_dir: &path::PathBuf, paral
             let entry = entry.unwrap();
             let path = entry.path();
             let dir_info = fs::read_dir(&path);
+            let mut tail_timestamp: Option<chrono::DateTime<chrono_tz::Tz>> = None;
+            // let mut gpx;
+            let mut tracklogs = GPXTrackLog::new();
             match dir_info {
                 Ok(_) => {
                     // If it's a directory, scan it recursively
                     println!("Processing directory: {}", path.display());
-                    process_directory(&path, &output_dir, parallel_num);
+                    process_directory(&path, &output_dir, parallel_num, merge_threshold);
                     thread_count.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
                     return;
                 }
@@ -65,11 +73,42 @@ fn process_directory(dir_path: &path::PathBuf, output_dir: &path::PathBuf, paral
                         return;
                     }
                     let logs = logs.unwrap();
-
-                    let gpx = GPX::new(logs);
-                    if gpx.save(&output_path).is_err() {
-                        eprintln!("Error saving file: {}", &output_path.display());
+                    let last_trackpoint = logs.last();
+                    if last_trackpoint.is_none() {
+                        eprintln!("No trackpoints found in file: {}", path.display());
+                        thread_count.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+                        return;
                     }
+
+                    if !tail_timestamp.is_none() {
+                        let head = logs.first();
+                        if head.is_none() {
+                            eprintln!("No trackpoints found in file: {}", path.display());
+                            thread_count.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+                            return;
+                        }
+
+                        let head_timestamp = head.unwrap().timestamp().unwrap();
+
+                        let merge_chrono_duration =
+                            chrono::Duration::from_std(merge_threshold.into()).unwrap();
+                        if tail_timestamp.unwrap() + merge_chrono_duration < head_timestamp {
+                            // If the last timestamp is more than merge_threshold seconds before the first timestamp, create a new GPX
+                            let gpx = GPX::new(tracklogs);
+                            if gpx.save(&output_path).is_err() {
+                                eprintln!("Error saving file: {}", &output_path.display());
+                            }
+                        } else {
+                            // Otherwise, merge with the existing GPX
+                            tracklogs.extend(logs.clone());
+                        }
+                    } else {
+                        // If this is the first file, initialize tracklogs
+                        tracklogs = logs.clone();
+                    }
+                    tail_timestamp = Some(last_trackpoint.unwrap().timestamp().unwrap());
+
+                    // let gpx = GPX::new(logs);
                     thread_count.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
                 }
             }

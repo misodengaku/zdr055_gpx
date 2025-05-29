@@ -1,4 +1,3 @@
-
 use clap::Parser;
 
 #[derive(Parser)]
@@ -10,6 +9,12 @@ pub(crate) struct Cli {
 
     #[clap(short, long, default_value = "8")]
     parallel: usize,
+
+    #[clap(short, long, default_value = "false")]
+    merge: bool,
+
+    #[clap(long, default_value = "6h")]
+    merge_threshold: humantime::Duration,
 }
 
 impl Cli {
@@ -21,7 +26,11 @@ impl Cli {
     }
 
     pub(crate) fn get_parallel_count(&self) -> usize {
-        if self.parallel > 0 { self.parallel } else { 1 }
+        if self.parallel > 0 {
+            self.parallel
+        } else {
+            1
+        }
     }
 
     pub(crate) fn get_input_path(&self) -> &std::path::PathBuf {
@@ -31,5 +40,4 @@ impl Cli {
     pub(crate) fn parse() -> Self {
         <Self as clap::Parser>::parse()
     }
-    
 }
