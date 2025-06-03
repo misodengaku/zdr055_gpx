@@ -37,6 +37,14 @@ impl Cli {
         &self.path
     }
 
+    pub(crate) fn get_merge_enabled(&self) -> bool {
+        self.merge
+    }
+
+    pub(crate) fn get_merge_threshold(&self) -> humantime::Duration {
+        self.merge_threshold
+    }
+
     pub(crate) fn parse() -> Self {
         <Self as clap::Parser>::parse()
     }

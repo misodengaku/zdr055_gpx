@@ -1,7 +1,7 @@
 use chrono::{DateTime, NaiveDateTime, TimeZone};
 use chrono_tz::{Asia::Tokyo, Tz};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct GPXTrackPoint {
     lat: f64,
     lon: f64,
@@ -32,7 +32,7 @@ impl GPXTrackPoint {
         if self.time.is_empty() {
             return Err("Time is empty".to_string());
         }
-        let timestamp = NaiveDateTime::parse_from_str(&self.time, "%Y-%m-%dT%H:%M:%S")
+        let timestamp = NaiveDateTime::parse_from_str(&self.time, "%Y-%m-%d %H:%M:%S")
             .map(|naive_date| Tokyo.from_local_datetime(&naive_date).unwrap());
 
         if timestamp.is_err() {

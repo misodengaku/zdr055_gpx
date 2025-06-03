@@ -26,6 +26,10 @@ impl GPXTrackLog {
         self.points.last()
     }
 
+    pub(crate) fn is_empty(&self) -> bool {
+        self.points.is_empty()
+    }
+
     pub(crate) fn to_str(&self) -> String {
         if self.points.is_empty() {
             return String::new();
