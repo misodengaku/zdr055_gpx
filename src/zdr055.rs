@@ -1,3 +1,4 @@
+use memmap2::Mmap;
 use regex::Regex;
 use std::{
     fs::File,
@@ -48,10 +49,12 @@ impl ZDR055MediaData {
             return Err(e);
         }
 
-        let mut file =
-            File::open(&self.filename).map_err(|e| format!("Failed to open file: {}", e))?;
-        let mut buffer = Vec::new();
-        let _ = file.read_to_end(&mut buffer);
+        let file = File::open(&self.filename).map_err(|e| format!("Failed to open file: {}", e))?;
+        let mmap = unsafe { Mmap::map(&file) };
+        if mmap.is_err() {
+            return Err("Failed to map file".to_string());
+        }
+        let buffer = mmap.unwrap();
         let mut file_reader = std::io::Cursor::new(&buffer);
 
         // 適当にidx1チャンクを探す

@@ -14,3 +14,4 @@ clap = { version = "4.0", features = ["derive"] }
 humantime = "2.2.0"
 chrono = { version="0.4.41", features = ["serde"] }
 chrono-tz = "0.10.3"
+memmap2 = "0.9.5"

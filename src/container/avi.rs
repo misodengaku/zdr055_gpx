@@ -4,6 +4,7 @@ use std::{
 };
 
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
+use memmap2::Mmap;
 
 pub(crate) const FILESIZE_FIELD_SIZE: usize = 4;
 pub(crate) const IDX1_INDEX_ENTRY_SIZE: usize = 16;
@@ -57,10 +58,13 @@ impl AVIIndex {
 }
 
 pub(crate) trait AVI {
-    fn open(&self, filename: &str) -> Result<Cursor<Vec<u8>>, String> {
-        let mut file = File::open(&filename).map_err(|e| format!("Failed to open file: {}", e))?;
-        let mut buffer = Vec::new();
-        let _ = file.read_to_end(&mut buffer);
+    fn open(&self, filename: &str) -> Result<Cursor<Mmap>, String> {
+        let file = File::open(&filename).map_err(|e| format!("Failed to open file: {}", e))?;
+        let mmap = unsafe { Mmap::map(&file) };
+        if mmap.is_err() {
+            return Err("Failed to map file".to_string());
+        }
+        let buffer = mmap.unwrap();
         let file_reader = std::io::Cursor::new(buffer);
         Ok(file_reader)
     }
