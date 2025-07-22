@@ -6,6 +6,7 @@ mod zdr055;
 use std::fs::{self};
 use std::str::FromStr;
 use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering::AcqRel;
 use std::{path, thread};
 
 use cli::Cli;
@@ -29,11 +30,16 @@ fn process_directory(
         return Err(format!("Error reading directory: {}", dir_path.display()).to_string());
     }
     let dir_entries = dir_entries.unwrap();
+    let dir_entries: Vec<_> = dir_entries.collect();
+    let dir_entry_count = dir_entries.len();
     let thread_count = std::sync::Arc::new(AtomicUsize::new(0));
+    let start_process_count = std::sync::Arc::new(AtomicUsize::new(0));
     for entry in dir_entries {
-        // limit parallel processing count by parallel_num
-
         let output_dir = output_dir.clone();
+
+        let process_count = start_process_count.fetch_add(1, AcqRel);
+
+        // limit parallel processing count by parallel_num
         let thread_count = std::sync::Arc::clone(&thread_count);
         while parallel_num > 0
             && thread_count.load(std::sync::atomic::Ordering::Acquire) >= parallel_num
@@ -41,11 +47,11 @@ fn process_directory(
             thread::sleep(std::time::Duration::from_millis(100));
         }
         let thread_count = std::sync::Arc::clone(&thread_count);
-        thread_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        thread_count.fetch_add(1, AcqRel);
         let handle = thread::spawn(move || {
             if entry.is_err() {
                 eprintln!("Error reading directory entry");
-                thread_count.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+                thread_count.fetch_sub(1, AcqRel);
                 return Err("Failed to read directory entry".to_string());
             }
             let entry = entry.unwrap();
@@ -57,7 +63,7 @@ fn process_directory(
                     println!("Processing directory: {}", path.display());
                     let result = process_directory(&path, &output_dir, parallel_num);
                     if result.is_ok() {
-                        thread_count.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+                        thread_count.fetch_sub(1, AcqRel);
                         return Ok(result.unwrap());
                     } else {
                         let err_msg = format!(
@@ -66,7 +72,7 @@ fn process_directory(
                             result.unwrap_err()
                         );
                         eprintln!("{}", err_msg);
-                        thread_count.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+                        thread_count.fetch_sub(1, AcqRel);
                         return Err(err_msg);
                     }
                 }
@@ -74,6 +80,12 @@ fn process_directory(
                     let mut results = Vec::new();
                     // If it's a file, process it
                     // let output_path = get_output_path(&path, &output_dir);
+                    println!(
+                        "[{}/{}] Processing file: {}",
+                        process_count + 1,
+                        dir_entry_count,
+                        path.display()
+                    );
                     let logs = process_media_file(&path);
                     if logs.is_err() {
                         let err_msg = format!(
@@ -82,7 +94,7 @@ fn process_directory(
                             logs.unwrap_err()
                         );
                         eprintln!("{}", err_msg);
-                        thread_count.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+                        thread_count.fetch_sub(1, AcqRel);
                         return Err(err_msg);
                     }
                     let logs = logs.unwrap();
@@ -94,7 +106,7 @@ fn process_directory(
                     //     eprintln!("Error saving file: {}", &output_path.display());
                     // }
 
-                    thread_count.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+                    thread_count.fetch_sub(1, AcqRel);
                     return Ok(results);
                 }
             }
@@ -128,7 +140,6 @@ fn process_directory(
 }
 
 fn process_media_file(file_path: &path::PathBuf) -> Result<GPXTrackLog, String> {
-    println!("Processing file: {}", file_path.display());
     let mut gpx_tracklog = GPXTrackLog::new();
 
     let file = ZDR055MediaData::new(file_path.to_str().unwrap());
@@ -136,7 +147,9 @@ fn process_media_file(file_path: &path::PathBuf) -> Result<GPXTrackLog, String> 
         .extract_stream_data()
         .map_err(|e| format!("Failed to extract stream data: {}", e))?;
 
+    let mut last_zdr_log = ZDR055PositionData::default();
     for line in stream_data.iter() {
+        println!("Processing line: {}", line);
         // line は ZDR055 独自ログデータなので ZDR055PositionData に変換する
         let log = ZDR055PositionData::from_str(line)
             .map_err(|e| format!("Failed to parse line: {}", e))?;
@@ -275,6 +288,7 @@ fn main() {
         }
     } else {
         let output_path = get_output_path(input_path, &output_dir);
+        println!("Processing file: {}", input_path.display());
         let logs = process_media_file(input_path)
             .map_err(|e| {
                 eprintln!("Error processing file: {}", e);
