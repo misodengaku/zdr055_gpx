@@ -103,7 +103,7 @@ impl ZDR055MediaData {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct ZDR055PositionData {
     device: String,
     timestamp: String,
@@ -123,6 +123,7 @@ pub(crate) struct ZDR055PositionData {
     firmware_version: u8,
     s_value: u32,
     unknown_field_tail: String,
+    is_valid: bool,
 }
 
 impl FromStr for ZDR055PositionData {
@@ -137,7 +138,7 @@ impl FromStr for ZDR055PositionData {
             X:\s?(?P<x_accel>-?\d+\.\d{2})\s                       # X acceleration
             Y:\s?(?P<y_accel>-?\d+\.\d{2})\s                       # Y acceleration
             Z:\s?(?P<z_accel>-?\d+\.\d{2})\s                       # Z acceleration
-            (?P<unknown_field_t>\S+T)\s                            # Unknown field T
+            (?P<unknown_field_t>\S+T)\s                            # Temperature or unknown field
             (?P<supply_voltage>\d+\.\d)V\s                         # Supply voltage
             (?P<event_type>[-\w]+)\s+                              # Event type
             (?P<latitude>\d+\.\d+|[-\.]+)\s                        # Latitude
@@ -145,10 +146,10 @@ impl FromStr for ZDR055PositionData {
             (?P<longitude>\d+\.\d+|[-\.]+)\s                       # Longitude
             (?P<longitude_we>[WE-])\s                              # Longitude W or E
             (?P<speed>\S+)km/h\s?                                  # Speed
-            E:(?P<e_value>\d+)\s                                   # E value
-            M:(?P<m_value>\d+)\s                                   # M value
-            EM:(?P<em_value>\d+)\s                                 # EM value
-            SA:(?P<sa_value>\d+)\s                                 # EA value
+            E:(?P<e_value>\d+)\s                                   # E value, 255
+            M:(?P<m_value>\d+)\s                                   # M value, 255
+            EM:(?P<em_value>\d+)\s                                 # EM value, 255
+            SA:(?P<sa_value>\d+)\s                                 # SA value, 0
             V:(?P<firmware_version>\d+)\s                          # Firmware version
             S:(?P<s_value>\d+k)\s                                  # S value
             (?P<unknown_field_tail>[\d,]+)                         # Unknown field tail 
@@ -158,6 +159,27 @@ impl FromStr for ZDR055PositionData {
         .unwrap();
 
         let caps = re.captures(input).ok_or("Failed to capture log data")?;
+
+        if caps["event_type"].to_string() == "-" {
+            return Ok(ZDR055PositionData {
+                device: caps["device"].to_string(),
+                timestamp: caps["timestamp"].to_string(),
+                ..Default::default()
+            });
+        }
+
+        let supply_voltage: f64 = if caps["supply_voltage"].parse::<f64>().is_err() {
+            return Err("Failed to parse supply_voltage".to_string());
+        } else {
+            caps["supply_voltage"].parse().unwrap()
+        };
+        if supply_voltage == 0.0 {
+            return Ok(ZDR055PositionData {
+                device: caps["device"].to_string(),
+                timestamp: caps["timestamp"].to_string(),
+                ..Default::default()
+            });
+        }
 
         let x_accel: f64 = if caps["x_accel"].parse::<f64>().is_err() {
             return Err("Failed to parse x_accel".to_string());
@@ -174,13 +196,11 @@ impl FromStr for ZDR055PositionData {
         } else {
             caps["z_accel"].parse().unwrap()
         };
-        let supply_voltage: f64 = if caps["supply_voltage"].parse::<f64>().is_err() {
-            return Err("Failed to parse supply_voltage".to_string());
-        } else {
-            caps["supply_voltage"].parse().unwrap()
-        };
         let latitude: f64 = if caps["latitude"].parse::<f64>().is_err() {
-            return Err("Failed to parse latitude".to_string());
+            return Err(format!(
+                "Failed to parse latitude: {}",
+                caps["latitude"].to_string()
+            ));
         } else {
             if &caps["latitude_ns"] == "S" {
                 -1.0 * caps["latitude"].parse::<f64>().unwrap()
@@ -222,6 +242,7 @@ impl FromStr for ZDR055PositionData {
             firmware_version: caps["firmware_version"].parse().unwrap(),
             s_value: caps["s_value"].trim_end_matches('k').parse().unwrap(),
             unknown_field_tail: caps["unknown_field_tail"].to_string(),
+            is_valid: true,
         })
     }
 }
@@ -236,6 +257,11 @@ impl ZDR055PositionData {
             self.timestamp.clone(),
         )
     }
+
+    pub(crate) fn is_valid(&self) -> bool {
+        self.is_valid
+    }
+
 
     // fn to_gpx_string(&self) -> String {
     //     let point = self.to_gpx_point();
