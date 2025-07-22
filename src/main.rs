@@ -151,8 +151,23 @@ fn process_media_file(file_path: &path::PathBuf) -> Result<GPXTrackLog, String> 
     for line in stream_data.iter() {
         println!("Processing line: {}", line);
         // line は ZDR055 独自ログデータなので ZDR055PositionData に変換する
-        let log = ZDR055PositionData::from_str(line)
-            .map_err(|e| format!("Failed to parse line: {}", e))?;
+        let log =
+            ZDR055PositionData::from_str(line).map_err(|e| format!("Failed to parse line: {}", e));
+
+        if log.is_err() {
+            eprintln!("Error parsing line: {}", log.unwrap_err());
+            continue;
+        }
+        let log = log.unwrap();
+        if !log.is_valid() {
+            eprintln!("Invalid log data: {}", line);
+            continue;
+        }
+        if last_zdr_log.is_valid() && log.has_same_position(&last_zdr_log) {
+            // 同じタイムスタンプのログデータが連続している場合はスキップ
+            continue;
+        }
+        last_zdr_log = log.clone();
 
         // GPX 形式に変換して gpx_points に追加する
         let gpx_point = log.to_gpx_point();

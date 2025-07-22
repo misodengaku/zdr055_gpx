@@ -262,6 +262,13 @@ impl ZDR055PositionData {
         self.is_valid
     }
 
+    pub(crate) fn has_same_timestamp(&self, other: &ZDR055PositionData) -> bool {
+        self.timestamp == other.timestamp
+    }
+
+    pub(crate) fn has_same_position(&self, other: &ZDR055PositionData) -> bool {
+        self.latitude == other.latitude && self.longitude == other.longitude
+    }
 
     // fn to_gpx_string(&self) -> String {
     //     let point = self.to_gpx_point();

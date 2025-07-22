@@ -22,9 +22,16 @@ impl GPXTrackPoint {
     }
 
     pub(crate) fn to_gpx_string(&self) -> String {
+        let timestamp = self.timestamp().unwrap_or_else(|_| {
+            // If timestamp parsing fails, use a default value
+            Tokyo
+                .from_local_datetime(&NaiveDateTime::from_timestamp(0, 0))
+                .unwrap()
+        });
+
         format!(
-            "<trkpt lat=\"{:.6}\" lon=\"{:.6}\"><ele>{:.2}</ele><time>{}</time><speed>{:.2}</speed></trkpt>",
-            self.lat, self.lon, self.ele, self.time, self.speed
+            "<trkpt lat=\"{:.7}\" lon=\"{:.7}\"><ele>{:.2}</ele><time>{}</time><desc>{:.2} km/h</desc></trkpt>",
+            self.lat, self.lon, self.ele, timestamp.format("%Y-%m-%dT%H:%M:%S%:z"), self.speed
         )
     }
 
