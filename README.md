@@ -1,4 +1,6 @@
 # ZDR055の映像データからGPXファイルを生成するやつ
+## 使い方
+[workflow 実行結果](https://github.com/misodengaku/zdr055_gpx/actions/workflows/rust.yml)の Artifacts からいい感じのバイナリを取得するか、 Rust 1.87.0 以降とかの環境でいい感じにビルドしてください
 
 ```
 $ ./zdr055_gpx --help
