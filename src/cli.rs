@@ -15,6 +15,9 @@ pub(crate) struct Cli {
 
     #[clap(long, default_value = "6h")]
     merge_threshold: humantime::Duration,
+
+    #[clap(short, long, default_value = "false")]
+    debug: bool,
 }
 
 impl Cli {
@@ -43,6 +46,10 @@ impl Cli {
 
     pub(crate) fn get_merge_threshold(&self) -> humantime::Duration {
         self.merge_threshold
+    }
+
+    pub(crate) fn is_debug_mode(&self) -> bool {
+        self.debug
     }
 
     pub(crate) fn parse() -> Self {
