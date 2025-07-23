@@ -1,4 +1,3 @@
-use regex::Regex;
 use std::{
     fs::File,
     io::{Read, Seek, SeekFrom},
@@ -129,119 +128,163 @@ pub(crate) struct ZDR055PositionData {
 impl FromStr for ZDR055PositionData {
     type Err = String;
 
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        let re = Regex::new(
-            r"(?x)
-            (?x)
-            (?P<device>[A-Za-z0-9]+):                              # Device name
-            (?P<timestamp>\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})\s  # Timestamp
-            X:\s?(?P<x_accel>-?\d+\.\d{2})\s                       # X acceleration
-            Y:\s?(?P<y_accel>-?\d+\.\d{2})\s                       # Y acceleration
-            Z:\s?(?P<z_accel>-?\d+\.\d{2})\s                       # Z acceleration
-            (?P<unknown_field_t>\S+T)\s                            # Temperature or unknown field
-            (?P<supply_voltage>\d+\.\d)V\s                         # Supply voltage
-            (?P<event_type>[-\w]+)\s+                              # Event type
-            (?P<latitude>\d+\.\d+|[-\.]+)\s                        # Latitude
-            (?P<latitude_ns>[NS-])\s+                              # Latitude N or S
-            (?P<longitude>\d+\.\d+|[-\.]+)\s                       # Longitude
-            (?P<longitude_we>[WE-])\s                              # Longitude W or E
-            (?P<speed>\S+)km/h\s?                                  # Speed
-            E:(?P<e_value>\d+)\s                                   # E value, 255
-            M:(?P<m_value>\d+)\s                                   # M value, 255
-            EM:(?P<em_value>\d+)\s                                 # EM value, 255
-            SA:(?P<sa_value>\d+)\s                                 # SA value, 0
-            V:(?P<firmware_version>\d+)\s                          # Firmware version
-            S:(?P<s_value>\d+k)\s                                  # S value
-            (?P<unknown_field_tail>[\d,]+)                         # Unknown field tail 
-            
-            ",
-        )
-        .unwrap();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // --- 1. デバイス名 ---
+        let (device, mut s) = s.split_once(':').ok_or("Invalid format for device name")?;
 
-        let caps = re.captures(input).ok_or("Failed to capture log data")?;
-
-        if caps["event_type"].to_string() == "-" {
-            return Ok(ZDR055PositionData {
-                device: caps["device"].to_string(),
-                timestamp: caps["timestamp"].to_string(),
-                ..Default::default()
-            });
+        // --- 2. タイムスタンプ ---
+        s = s.trim_start();
+        let (timestamp, mut s) = s.split_at(19); // "YYYY-MM-DD HH:MM:SS" は19バイト
+        if timestamp.len() != 19 {
+            return Err("Invalid timestamp format".to_string());
         }
 
-        let supply_voltage: f64 = if caps["supply_voltage"].parse::<f64>().is_err() {
-            return Err("Failed to parse supply_voltage".to_string());
-        } else {
-            caps["supply_voltage"].parse().unwrap()
-        };
-        if supply_voltage == 0.0 {
-            return Ok(ZDR055PositionData {
-                device: caps["device"].to_string(),
-                timestamp: caps["timestamp"].to_string(),
-                ..Default::default()
-            });
-        }
+        // --- 3. 加速度 (X, Y, Z) ---
+        s = s
+            .trim_start()
+            .strip_prefix("X:")
+            .ok_or("Missing X acceleration")?
+            .trim_start();
+        let (x_accel_str, mut s) = s
+            .split_once(' ')
+            .ok_or("Invalid format for X acceleration")?;
+        let x_accel = x_accel_str
+            .parse::<f64>()
+            .map_err(|_| format!("Failed to parse X acceleration: {}", x_accel_str))?;
 
-        let x_accel: f64 = if caps["x_accel"].parse::<f64>().is_err() {
-            return Err("Failed to parse x_accel".to_string());
-        } else {
-            caps["x_accel"].parse().unwrap()
-        };
-        let y_accel: f64 = if caps["y_accel"].parse::<f64>().is_err() {
-            return Err("Failed to parse y_accel".to_string());
-        } else {
-            caps["y_accel"].parse().unwrap()
-        };
-        let z_accel: f64 = if caps["z_accel"].parse::<f64>().is_err() {
-            return Err("Failed to parse z_accel".to_string());
-        } else {
-            caps["z_accel"].parse().unwrap()
-        };
-        let latitude: f64 = if caps["latitude"].parse::<f64>().is_err() {
-            return Err(format!(
-                "Failed to parse latitude: {}",
-                caps["latitude"].to_string()
-            ));
-        } else {
-            if &caps["latitude_ns"] == "S" {
-                -1.0 * caps["latitude"].parse::<f64>().unwrap()
-            } else {
-                caps["latitude"].parse().unwrap()
-            }
-        };
-        let longitude: f64 = if caps["longitude"].parse::<f64>().is_err() {
-            return Err("Failed to parse longitude".to_string());
-        } else {
-            if &caps["longitude_we"] == "W" {
-                -1.0 * caps["longitude"].parse::<f64>().unwrap()
-            } else {
-                caps["longitude"].parse().unwrap()
-            }
-        };
-        let speed: f64 = if caps["speed"].parse::<f64>().is_err() {
-            return Err("Failed to parse speed".to_string());
-        } else {
-            caps["speed"].parse().unwrap()
-        };
+        s = s
+            .trim_start()
+            .strip_prefix("Y:")
+            .ok_or("Missing Y acceleration")?
+            .trim_start();
+        let (y_accel_str, mut s) = s
+            .split_once(' ')
+            .ok_or("Invalid format for Y acceleration")?;
+        let y_accel = y_accel_str
+            .parse::<f64>()
+            .map_err(|_| format!("Failed to parse Y acceleration: {}", y_accel_str))?;
 
+        s = s
+            .trim_start()
+            .strip_prefix("Z:")
+            .ok_or("Missing Z acceleration")?
+            .trim_start();
+        let (z_accel_str, mut s) = s
+            .split_once(' ')
+            .ok_or("Invalid format for Z acceleration")?;
+        let z_accel = z_accel_str
+            .parse::<f64>()
+            .map_err(|_| format!("Failed to parse Z acceleration: {}", z_accel_str))?;
+
+        // --- 4. 不明なTフィールド & 電圧 ---
+        s = s.trim_start();
+        let (unknown_field_t, mut s) = s
+            .split_once(' ')
+            .ok_or("Invalid format for unknown field T")?;
+        s = s.trim_start();
+        let (supply_voltage_str, mut s) = s
+            .split_once(' ')
+            .ok_or("Invalid format for supply voltage")?;
+        let supply_voltage = supply_voltage_str
+            .strip_suffix('V')
+            .ok_or("Invalid format for supply voltage")?
+            .parse::<f64>()
+            .map_err(|_| format!("Failed to parse supply voltage: {}", supply_voltage_str))?;
+
+        // --- 5. イベントタイプ & 緯度経度 ---
+        s = s.trim_start();
+        let (event_type, mut s) = s.split_once(' ').ok_or("Invalid format for event type")?;
+        s = s.trim_start();
+        let (latitude_str, mut s) = s.split_once(' ').ok_or("Invalid format for latitude")?;
+        let latitude = latitude_str
+            .parse::<f64>()
+            .map_err(|_| format!("Failed to parse latitude: {}", latitude_str))?;
+        s = s.trim_start();
+        let (_ns, mut s) = s.split_once(' ').ok_or("Invalid format for N/S")?; // N/S をスキップ
+        s = s.trim_start();
+        let (longitude_str, mut s) = s.split_once(' ').ok_or("Invalid format for longitude")?;
+        let longitude = longitude_str
+            .parse::<f64>()
+            .map_err(|_| format!("Failed to parse longitude: {}", longitude_str))?;
+        s = s.trim_start();
+        let (_we, mut s) = s.split_once(' ').ok_or("Invalid format for W/E")?; // W/E をスキップ
+
+        // --- 6. 速度 ---
+        s = s.trim_start();
+        let (speed_str, mut s) = s.split_once("km/h").ok_or("Invalid format for speed")?;
+        let speed = speed_str
+            .parse::<f64>()
+            .map_err(|_| format!("Failed to parse speed: {}", speed_str))?;
+
+        // --- 7. 残りのフィールド (空白で分割) ---
+        let mut parts = s.split_whitespace();
+        let e_value = parts
+            .next()
+            .ok_or("Missing E field")?
+            .strip_prefix("E:")
+            .ok_or("Invalid format for E field")?
+            .parse::<u8>()
+            .map_err(|_| "Failed to parse E value")?;
+        let m_value = parts
+            .next()
+            .ok_or("Missing M field")?
+            .strip_prefix("M:")
+            .ok_or("Invalid format for M field")?
+            .parse::<u8>()
+            .map_err(|_| "Failed to parse M value")?;
+        let em_value = parts
+            .next()
+            .ok_or("Missing EM field")?
+            .strip_prefix("EM:")
+            .ok_or("Invalid format for EM field")?
+            .parse::<u8>()
+            .map_err(|_| "Failed to parse EM value")?;
+        let sa_value = parts
+            .next()
+            .ok_or("Missing SA field")?
+            .strip_prefix("SA:")
+            .ok_or("Invalid format for SA field")?
+            .parse::<u8>()
+            .map_err(|_| "Failed to parse SA value")?;
+        let firmware_version = parts
+            .next()
+            .ok_or("Missing firmware version field")?
+            .strip_prefix("V:")
+            .ok_or("Invalid format for firmware version field")?
+            .parse::<u8>()
+            .map_err(|_| "Failed to parse firmware version")?;
+        let s_value_str = parts
+            .next()
+            .ok_or("Missing S field")?
+            .strip_prefix("S:")
+            .ok_or("Invalid format for S field")?
+            .strip_suffix('k')
+            .ok_or("Invalid format for S field")?;
+        let s_value = s_value_str
+            .parse::<u32>()
+            .map_err(|_| format!("Failed to parse S value: {}", s_value_str))?;
+        let unknown_field_tail = parts.next().ok_or("Missing unknown field tail")?;
+
+        // --- 8. 構造体を構築して返す ---
         Ok(ZDR055PositionData {
-            device: caps["device"].to_string(),
-            timestamp: caps["timestamp"].to_string(),
+            device: device.to_string(),
+            timestamp: timestamp.to_string(),
             x_accel,
             y_accel,
             z_accel,
-            unknown_field_t: caps["unknown_field_t"].to_string(),
+            unknown_field_t: unknown_field_t.to_string(),
             supply_voltage,
-            event_type: caps["event_type"].to_string(),
+            event_type: event_type.to_string(),
             latitude,
             longitude,
             speed,
-            e_value: caps["e_value"].parse().unwrap(),
-            m_value: caps["m_value"].parse().unwrap(),
-            em_value: caps["em_value"].parse().unwrap(),
-            sa_value: caps["sa_value"].parse().unwrap(),
-            firmware_version: caps["firmware_version"].parse().unwrap(),
-            s_value: caps["s_value"].trim_end_matches('k').parse().unwrap(),
-            unknown_field_tail: caps["unknown_field_tail"].to_string(),
+            e_value,
+            m_value,
+            em_value,
+            sa_value,
+            firmware_version,
+            s_value,
+            unknown_field_tail: unknown_field_tail.to_string(),
             is_valid: true,
         })
     }
